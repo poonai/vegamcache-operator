@@ -1,0 +1,8 @@
+apiVersion: vegamcacheoperator.sch00lb0y.io/v1alpha1
+kind: VegamCache
+metadata:
+  name: vegam-cache-operator
+spec:
+  deploymentName: "hello"
+  vegamPort: 6534
+  vegamServerPort: 8080
