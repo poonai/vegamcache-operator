@@ -1,0 +1,23 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: 
+ name: vegamcache-deployment
+ labels:
+   app: vegamcache
+spec:
+  replicas: 3
+  selector: 
+    matchLabels:
+      app: vegamcache
+  template:
+    metadata:
+      labels:
+        app: vegamcache
+    spec:
+      containers:
+       - name: vegamcache
+         image: schoolboy/vegamcacheexample
+         ports:
+         - containerPort: 90
+         - containerPort: 8000
+         - containerPort: 8087
