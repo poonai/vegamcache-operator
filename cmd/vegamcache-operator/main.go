@@ -19,9 +19,11 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/hasura/gitkube/pkg/signals"
-	vegamcacheapi "github.com/sch00lb0y/vegamcache-operator/pkg/apis/vegamcache/v1alpha1"
-	vegamclient "github.com/sch00lb0y/vegamcache-operator/pkg/client/clientset/versioned"
-	vegaminformer "github.com/sch00lb0y/vegamcache-operator/pkg/client/informers/externalversions"
+	// vegamcacheapi "github.com/sch00lb0y/vegamcache-operator/pkg/apis/vegamcache/v1alpha1"
+	// vegamclient "github.com/sch00lb0y/vegamcache-operator/pkg/client/clientset/versioned"
+	// vegaminformer "github.com/sch00lb0y/vegamcache-operator/pkg/client/informers/externalversions"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
@@ -35,16 +37,32 @@ func main() {
 	if err != nil {
 		glog.Fatalf("error on creating config from file: %v", err)
 	}
-	vegamClient, err := vegamclient.NewForConfig(config)
+	// vegamClient, err := vegamclient.NewForConfig(config)
+	// if err != nil {
+	// 	glog.Fatalf("error on creating vegam client: %v", err)
+	// }
+	// vegamInformer := vegaminformer.NewSharedInformerFactory(vegamClient, time.Second*30)
+	// vegamInformer.Vegamcacheoperator().V1alpha1().VegamCaches().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// 	AddFunc: func(obj interface{}) {
+	// 		obj, _ = obj.(*vegamcacheapi.VegamCache)
+	// 		fmt.Print(obj)
+	// 	},
+	// })
+	//vegamInformer.Start(stopCh)
+	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		glog.Fatalf("error on creating vegam client: %v", err)
+		glog.Fatalf("error on creating kuberentes client: %v", err)
 	}
-	vegamInformer := vegaminformer.NewSharedInformerFactory(vegamClient, time.Second*30)
-	vegamInformer.Vegamcacheoperator().V1alpha1().VegamCaches().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	sharedInformer := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
+	sharedInformer.Apps().V1beta1().Deployments().
+		Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			obj, _ = obj.(*vegamcacheapi.VegamCache)
-			fmt.Print(obj)
+			fmt.Println("added")
+		},
+		UpdateFunc: func(old interface{}, new interface{}) {
+			fmt.Println("update")
 		},
 	})
-	vegamInformer.Start(stopCh)
+	sharedInformer.Start(stopCh)
+	<-stopCh
 }
