@@ -1,0 +1,42 @@
+package: github.com/sch00lb0y/vegamcache-operator
+import:
+- package: github.com/golang/glog
+- package: github.com/hasura/gitkube
+  subpackages:
+  - pkg/signals
+- package: github.com/sch00lb0y/vegamcache
+- package: k8s.io/api
+  subpackages:
+  - core/v1
+- package: k8s.io/apimachinery
+  subpackages:
+  - pkg/api/errors
+  - pkg/apis/meta/v1
+  - pkg/labels
+  - pkg/runtime
+  - pkg/runtime/schema
+  - pkg/runtime/serializer
+  - pkg/types
+  - pkg/util/runtime
+  - pkg/watch
+- package: k8s.io/client-go
+  subpackages:
+  - discovery
+  - discovery/fake
+  - informers
+  - kubernetes
+  - listers/apps/v1
+  - listers/core/v1
+  - plugin/pkg/client/auth/gcp
+  - rest
+  - testing
+  - tools/cache
+  - tools/clientcmd
+  - util/flowcontrol
+  - util/workqueue
+- package: k8s.io/kubernetes
+  subpackages:
+  - pkg/controller
+- package: k8s.io/sample-controller
+  subpackages:
+  - pkg/signals

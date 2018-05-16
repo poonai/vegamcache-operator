@@ -14,19 +14,17 @@ limitations under the License.
 package main
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/hasura/gitkube/pkg/signals"
-	// vegamcacheapi "github.com/sch00lb0y/vegamcache-operator/pkg/apis/vegamcache/v1alpha1"
-	// vegamclient "github.com/sch00lb0y/vegamcache-operator/pkg/client/clientset/versioned"
-	// vegaminformer "github.com/sch00lb0y/vegamcache-operator/pkg/client/informers/externalversions"
+	vegamclient "github.com/sch00lb0y/vegamcache-operator/pkg/client/clientset/versioned"
+	vegaminformer "github.com/sch00lb0y/vegamcache-operator/pkg/client/informers/externalversions"
+	vegamcontroller "github.com/sch00lb0y/vegamcache-operator/pkg/controller"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/sample-controller/pkg/signals"
 )
 
 const configFile = "/home/schoolgirl/.kube/config"
@@ -37,32 +35,23 @@ func main() {
 	if err != nil {
 		glog.Fatalf("error on creating config from file: %v", err)
 	}
-	// vegamClient, err := vegamclient.NewForConfig(config)
-	// if err != nil {
-	// 	glog.Fatalf("error on creating vegam client: %v", err)
-	// }
-	// vegamInformer := vegaminformer.NewSharedInformerFactory(vegamClient, time.Second*30)
-	// vegamInformer.Vegamcacheoperator().V1alpha1().VegamCaches().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-	// 	AddFunc: func(obj interface{}) {
-	// 		obj, _ = obj.(*vegamcacheapi.VegamCache)
-	// 		fmt.Print(obj)
-	// 	},
-	// })
-	//vegamInformer.Start(stopCh)
+	vegamClient, err := vegamclient.NewForConfig(config)
+	if err != nil {
+		glog.Fatalf("error on creating vegam client: %v", err)
+	}
+	vegamInformer := vegaminformer.NewSharedInformerFactory(vegamClient, time.Second*30)
+
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		glog.Fatalf("error on creating kuberentes client: %v", err)
 	}
 	sharedInformer := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
-	sharedInformer.Apps().V1beta1().Deployments().
-		Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			fmt.Println("added")
-		},
-		UpdateFunc: func(old interface{}, new interface{}) {
-			fmt.Println("update")
-		},
-	})
-	sharedInformer.Start(stopCh)
-	<-stopCh
+	vegamController := vegamcontroller.NewController(vegamInformer, sharedInformer)
+	go sharedInformer.Core().V1().Pods().Informer().Run(stopCh)
+	go vegamInformer.Vegamcacheoperator().V1alpha1().VegamCaches().Informer().Run(stopCh)
+	// let them sync
+	time.Sleep(5)
+	if err := vegamController.Run(stopCh); err != nil {
+		glog.Fatal(err)
+	}
 }

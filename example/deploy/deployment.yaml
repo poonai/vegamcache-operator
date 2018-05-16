@@ -13,6 +13,7 @@ spec:
     metadata:
       labels:
         app: vegamcache
+        vegam: app1
     spec:
       containers:
        - name: vegamcache
