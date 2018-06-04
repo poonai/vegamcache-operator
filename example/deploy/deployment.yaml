@@ -18,6 +18,7 @@ spec:
       containers:
        - name: vegamcache
          image: schoolboy/vegamcacheexample
+         imagePullPolicy: Always
          ports:
          - containerPort: 90
          - containerPort: 8000

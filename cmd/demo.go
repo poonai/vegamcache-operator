@@ -8,7 +8,6 @@ import (
 	"github.com/hasura/gitkube/pkg/signals"
 	vegamclient "github.com/sch00lb0y/vegamcache-operator/pkg/client/clientset/versioned"
 	vegaminformer "github.com/sch00lb0y/vegamcache-operator/pkg/client/informers/externalversions"
-	"k8s.io/apimachinery/pkg/labels"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
@@ -27,18 +26,14 @@ func main() {
 	}
 	vegamClient, err := vegamclient.NewForConfig(config)
 	vegamInformer := vegaminformer.NewSharedInformerFactory(vegamClient, time.Second*30)
-	var label labels.Set
-	label = map[string]string{"vegam": "app1"}
+	vegamInformer.Vegamcacheoperator().V1alpha1().VegamCaches().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			fmt.Println("added")
+		},
+	})
 	go vegamInformer.Vegamcacheoperator().V1alpha1().VegamCaches().Informer().Run(stopCh)
-	//	go vegamInformer.Start(stopCh)
-	tic := time.Tick(time.Second * 5)
-	for range tic {
-		c, err := vegamInformer.Vegamcacheoperator().V1alpha1().VegamCaches().Lister().List(label.AsSelector())
-		if err != nil {
-			fmt.Print(err)
-		}
-		fmt.Print(c[0])
-	}
+	go vegamInformer.Start(stopCh)
+
 	if !cache.WaitForCacheSync(stopCh, vegamInformer.Vegamcacheoperator().V1alpha1().VegamCaches().Informer().HasSynced) {
 		fmt.Errorf("timeout on sync")
 	}

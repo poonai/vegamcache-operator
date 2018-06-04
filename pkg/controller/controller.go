@@ -15,24 +15,26 @@ package controller
 
 import (
 	"sync"
-
-	"github.com/golang/glog"
+	"time"
 
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/runtime"
 
+	"log"
+
 	vegamcacheapi "github.com/sch00lb0y/vegamcache-operator/pkg/apis/vegamcache/v1alpha1"
 	vegaminformer "github.com/sch00lb0y/vegamcache-operator/pkg/client/informers/externalversions"
 	vegamlister "github.com/sch00lb0y/vegamcache-operator/pkg/client/listers/vegamcache/v1alpha1"
+
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	listerappsv1 "k8s.io/client-go/listers/apps/v1"
 	listercorev1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/kubernetes/pkg/controller"
 )
 
 type serverInfo struct {
@@ -61,36 +63,46 @@ func NewController(vegamcacheFactory vegaminformer.SharedInformerFactory, shared
 	replicasetInformer := sharedInformer.Apps().V1().ReplicaSets()
 	podInformer := sharedInformer.Core().V1().Pods()
 	ctrl := &vegamController{
-		vegamLister:      vegamInformer.Lister(),
-		vegamHasSynced:   vegamInformer.Informer().HasSynced,
-		deploymentLister: deploymentInformer.Lister(),
-		replicasetLister: replicasetInformer.Lister(),
-		podQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "deployment-queue"),
-		vegamQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "vegam-queue"),
-		podLister:        podInformer.Lister(),
+		vegamLister:          vegamInformer.Lister(),
+		vegamHasSynced:       vegamInformer.Informer().HasSynced,
+		deploymentLister:     deploymentInformer.Lister(),
+		replicasetLister:     replicasetInformer.Lister(),
+		podQueue:             workqueue.NewNamedRateLimitingQueue(workqueue.DefaultItemBasedRateLimiter(), "deployment-queue"),
+		vegamQueue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultItemBasedRateLimiter(), "vegam-queue"),
+		podLister:            podInformer.Lister(),
+		podInformerHasSynced: podInformer.Informer().HasSynced,
 	}
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			ctrl.podQueue.Add(obj)
+			pod := obj.(*v1.Pod)
+			key, err := cache.MetaNamespaceKeyFunc(pod)
+			if err != nil {
+				log.Printf("unable to create key for obj %v : %v", pod, err)
+				return
+			}
+			log.Println("new pod is added to the queue")
+			ctrl.podQueue.Add(key)
 		},
 		UpdateFunc: func(old interface{}, new interface{}) {
 			oldPod := old.(*v1.Pod)
 			newPod := new.(*v1.Pod)
 			if newPod.DeletionTimestamp != nil {
-				key, err := controller.KeyFunc(newPod)
+				key, err := cache.MetaNamespaceKeyFunc(newPod)
 				if err != nil {
-					glog.Errorf("unable to create key for obj %v : %v", newPod, err)
+					log.Printf("unable to create key for obj %v : %v", newPod, err)
 					return
 				}
+				log.Println("updated pod is added to the queue")
 				ctrl.podQueue.Add(key)
 				return
 			}
 			if oldPod.Status.Phase != v1.PodRunning && newPod.Status.Phase == v1.PodRunning {
-				key, err := controller.KeyFunc(newPod)
+				key, err := cache.MetaNamespaceKeyFunc(newPod)
 				if err != nil {
-					glog.Errorf("unable to create key for obj %v : %v", newPod, err)
+					log.Printf("unable to create key for obj %v : %v", newPod, err)
 					return
 				}
+				log.Println("updated pod is added to the queue")
 				ctrl.podQueue.Add(key)
 			}
 		},
@@ -99,59 +111,67 @@ func NewController(vegamcacheFactory vegaminformer.SharedInformerFactory, shared
 		Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			newVegam := obj.(*vegamcacheapi.VegamCache)
-			key, err := controller.KeyFunc(newVegam)
+			key, err := cache.MetaNamespaceKeyFunc(newVegam)
 			if err != nil {
-				glog.Errorf("unable to create key for obj %v : %v", newVegam, err)
+				log.Printf("unable to create key for obj %v : %v", newVegam, err)
 				return
 			}
+			log.Println("vegam custom resource is added to the queue")
 			ctrl.vegamQueue.Add(key)
 		},
 		DeleteFunc: func(obj interface{}) {
 			newVegam := obj.(*vegamcacheapi.VegamCache)
-			key, err := controller.KeyFunc(newVegam)
-			if err != nil {
-				glog.Errorf("unable to create key for obj %v : %v", newVegam, err)
-				return
-			}
-			ctrl.vegamQueue.Add(key)
-		},
-		UpdateFunc: func(_ interface{}, obj interface{}) {
-			newVegam := obj.(*vegamcacheapi.VegamCache)
 			key, err := cache.MetaNamespaceKeyFunc(newVegam)
 			if err != nil {
-				glog.Errorf("unable to create key for obj %v : %v", newVegam, err)
+				log.Printf("unable to create key for obj %v : %v", newVegam, err)
 				return
 			}
+
+			log.Println("deleted vegam custom resource is added to the queue")
 			ctrl.vegamQueue.Add(key)
 		},
 	})
 	return ctrl
 }
 
+func (c *vegamController) runPodWorker() {
+	for c.processPod() {
+
+	}
+}
+
 func (c *vegamController) processPod() bool {
 	key, shutdown := c.podQueue.Get()
 	if shutdown {
+		log.Println("Shutting down")
 		return false
 	}
 	defer c.podQueue.Done(key)
-	name, namespace, err := cache.SplitMetaNamespaceKey(key.(string))
+	namespace, name, err := cache.SplitMetaNamespaceKey(key.(string))
 	if err != nil {
-		glog.Errorf("unable to split namespace and name for key %v", err)
+		log.Printf("unable to split namespace and name for key %v", err)
 		return true
 	}
 	pod, err := c.podLister.Pods(namespace).Get(name)
 	if err != nil {
-		glog.Errorf("error in retriving pod %v", err)
+		log.Printf("error in retriving pod %v", err)
+		return true
+	}
+	val, ok := pod.Labels["vegam"]
+	if !ok {
+		log.Printf("pod doesn't have vegam label so, ignoring this pod")
 		return true
 	}
 	var podLabels labels.Set
-	podLabels = pod.Labels
+	podLabels = map[string]string{"vegam": val}
 	vegamCaches, err := c.vegamLister.List(podLabels.AsSelector())
-	if len(vegamCaches) == 1 {
-		fmt.Print(vegamCaches[0])
+	if len(vegamCaches) != 1 {
+		log.Printf("label doens't not matching with any vegamcache, so ignoring this pod")
+		return true
 	}
+	hitIp(pod.Status.PodIP)
 	if err != nil {
-		glog.Errorf("unable to list vegam caches from selectors %v", err)
+		log.Printf("unable to list vegam caches from selectors %v", err)
 	}
 	return true
 }
@@ -160,10 +180,12 @@ func (c *vegamController) Run(stopCh <-chan struct{}) error {
 	defer runtime.HandleCrash()
 	defer c.vegamQueue.ShutDown()
 	defer c.podQueue.ShutDown()
+	log.Println("Vegam controller started")
 
 	if !cache.WaitForCacheSync(stopCh, c.podInformerHasSynced, c.vegamHasSynced) {
 		return fmt.Errorf("timeout on sync")
 	}
+	go wait.Until(c.runPodWorker, time.Second, stopCh)
 	<-stopCh
 	return nil
 }

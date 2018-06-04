@@ -14,12 +14,15 @@ limitations under the License.
 package main
 
 import (
+	"flag"
 	"time"
 
-	"github.com/golang/glog"
+	"log"
+
 	vegamclient "github.com/sch00lb0y/vegamcache-operator/pkg/client/clientset/versioned"
 	vegaminformer "github.com/sch00lb0y/vegamcache-operator/pkg/client/informers/externalversions"
 	vegamcontroller "github.com/sch00lb0y/vegamcache-operator/pkg/controller"
+
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -27,23 +30,29 @@ import (
 	"k8s.io/sample-controller/pkg/signals"
 )
 
-const configFile = "/home/schoolgirl/.kube/config"
+//const configFile = "/home/schoolgirl/.kube/config"
+
+var (
+	masterURL  string
+	kubeconfig string
+)
 
 func main() {
+	flag.Parse()
 	stopCh := signals.SetupSignalHandler()
-	config, err := clientcmd.BuildConfigFromFlags("", configFile)
+	config, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
 	if err != nil {
-		glog.Fatalf("error on creating config from file: %v", err)
+		log.Fatalf("error on creating config from file: %v", err)
 	}
 	vegamClient, err := vegamclient.NewForConfig(config)
 	if err != nil {
-		glog.Fatalf("error on creating vegam client: %v", err)
+		log.Fatalf("error on creating vegam client: %v", err)
 	}
 	vegamInformer := vegaminformer.NewSharedInformerFactory(vegamClient, time.Second*30)
 
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		glog.Fatalf("error on creating kuberentes client: %v", err)
+		log.Fatalf("error on creating kuberentes client: %v", err)
 	}
 	sharedInformer := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	vegamController := vegamcontroller.NewController(vegamInformer, sharedInformer)
@@ -52,6 +61,11 @@ func main() {
 	// let them sync
 	time.Sleep(5)
 	if err := vegamController.Run(stopCh); err != nil {
-		glog.Fatal(err)
+		log.Fatal(err)
 	}
+}
+
+func init() {
+	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
+	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
 }

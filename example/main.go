@@ -45,6 +45,13 @@ func main() {
 		vg.Put(key, val, 0)
 		w.Write([]byte(`cached`))
 	})
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`I'm home`))
+	})
 	log.Print("Server Stared")
-	http.ListenAndServe(":90", nil)
+	err := http.ListenAndServe(":90", nil)
+	if err != nil {
+		panic(err)
+	}
 }
